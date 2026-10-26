@@ -1,0 +1,27 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data
+watch_state.json
+sample.json
+data/
+
+# Tests and editor settings
+.pytest_cache/
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
