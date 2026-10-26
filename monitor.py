@@ -1,13 +1,18 @@
 from checker import check_connection
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from notifier import sendEmail
 from pathlib import Path
 
-import logging, json
+import logging, json, os
 
 logger = logging.getLogger(__name__)
 
-STATE_FILE = Path(__file__).resolve().parent / "sample.json"
+STATE_FILE = Path(
+    os.getenv(
+        "STATE_FILE",
+        str(Path(__file__).resolve().parent / "watch_state.json")
+    )
+)
 
 POSITIVE_MESSAGE = dict()
 POSITIVE_MESSAGE['message'] = 'The Linux server is back online.'
@@ -29,6 +34,7 @@ class ServerMonitor:
         self.failure_count = 0
         self.is_offline = False
         self.last_notification = None
+        self.recovering_pending = False
 
 
     def check(self):
@@ -59,7 +65,7 @@ class ServerMonitor:
             self.is_offline = True
             logger.error("Server %s is now considered OFFLINE", self.host)
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         if self.last_notification is None:
             message = FIRST_NEGATIVE_MESSAGE
@@ -80,7 +86,7 @@ class ServerMonitor:
             )
 
         else:
-            self.last_notification = datetime.now()
+            self.last_notification = datetime.now(timezone.utc)
             logger.info(
                 "Outage notification submitted successfully for %s",
                 self.host
@@ -88,26 +94,28 @@ class ServerMonitor:
 
 
     def handle_success(self):
-        logger.info("Connection to %s successfully", self.host)
+        logger.info("Connection to %s successful", self.host)
 
         if self.is_offline:
             logger.info("Server %s has recovered", self.host)
 
-            try:
-                sendEmail(
-                    POSITIVE_MESSAGE["message"],
-                    POSITIVE_MESSAGE["subject"]
-                )
+            self.is_offline = False
+            self.last_notification = None
+            self.recovering_pending = True
 
-                logger.info("Recovery notification submitted successfully")
+        self.failure_count = 0
+
+        if self.recovering_pending:
+            try:
+                sendEmail(POSITIVE_MESSAGE["message"], POSITIVE_MESSAGE["subject"])
 
             except Exception:
                 logger.exception("Failed to send recovery notification")
 
-            self.is_offline = False
-            self.last_notification = None
+            else:
+                self.recovering_pending = False
+                logger.info("Recovery notification submitted successfully")
 
-        self.failure_count = 0
 
     def save_state(self):
         data = {
@@ -117,14 +125,21 @@ class ServerMonitor:
                 self.last_notification.isoformat()
                 if self.last_notification is not None
                 else None
-            )
+            ),
+            "recovering_pending": self.recovering_pending
         }
 
-        with open("sample.json", "w") as f:
-            json.dump(data, f)
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        with STATE_FILE.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
 
     def load_state(self):
+        if not STATE_FILE.exists():
+            logger.info("No previous state found. Starting fresh.")
+            return
+
         with STATE_FILE.open("r") as f:
             data = json.load(f)
 
@@ -138,3 +153,5 @@ class ServerMonitor:
             if timestamp is not None
             else None
         )
+
+        self.recovering_pending = data.get("recovering_pending", False)

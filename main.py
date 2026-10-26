@@ -12,7 +12,12 @@ def exec_check(monitor, scheduler):
         logger.exception("Unexpected error during monitoring")
 
     finally:
-        scheduler.enter(1800, 1, exec_check, (monitor, scheduler,))
+        scheduler.enter(
+            int(os.getenv("CHECK_INTERVAL", "1800")),
+            1,
+            exec_check,
+            (monitor, scheduler,)
+        )
 
 
 
@@ -26,11 +31,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create server monitor
-server_monitor = ServerMonitor('192.168.7.68', 22)
+server_monitor = ServerMonitor(
+    os.getenv("TARGET_HOST", "192.168.7.68"),
+    int(os.getenv("TARGET_PORT", "22"))
+)
 server_monitor.load_state()
-server_monitor.check()
 
 # Setup scheduler
 scheduler = sched.scheduler(time.monotonic, time.sleep)
-scheduler.enter(1800, 1, exec_check, (server_monitor, scheduler,))
+scheduler.enter(0, 1, exec_check, (server_monitor, scheduler,))
 scheduler.run()
