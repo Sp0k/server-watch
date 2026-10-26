@@ -1,0 +1,10 @@
+services:
+  server-watch:
+    image: ghcr.io/sp0k/server-watch:latest
+    container_name: server-watch
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ${SERVER_WATCH_DATA_DIR:-./data}:/data
+
